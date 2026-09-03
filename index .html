@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Send SMS</title>
+<script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background: #ffffff;
+    color: #222;
+  }
+  h2 {
+    font-size: 17px;
+    margin: 0 0 16px 0;
+    color: #1f2a3c;
+  }
+  .template-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .template-tab {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #d0d5dd;
+    border-radius: 6px;
+    background: #f7f8fa;
+    cursor: pointer;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: #444;
+    transition: all 0.15s ease;
+  }
+  .template-tab.active {
+    background: #1f4e78;
+    color: #ffffff;
+    border-color: #1f4e78;
+  }
+  label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+    display: block;
+    margin-bottom: 6px;
+  }
+  select, textarea {
+    width: 100%;
+    font-family: inherit;
+    font-size: 14px;
+    border: 1px solid #d0d5dd;
+    border-radius: 6px;
+    padding: 10px;
+  }
+  select { margin-bottom: 16px; }
+  textarea {
+    min-height: 220px;
+    resize: vertical;
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+  .char-count {
+    font-size: 11px;
+    color: #888;
+    text-align: right;
+    margin-bottom: 16px;
+  }
+  .recipient-row {
+    font-size: 13px;
+    color: #444;
+    margin-bottom: 14px;
+    background: #f2f6fa;
+    padding: 8px 12px;
+    border-radius: 6px;
+  }
+  .btn-row {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  button {
+    font-size: 14px;
+    font-weight: 600;
+    padding: 9px 20px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+  }
+  .btn-cancel {
+    background: #eee;
+    color: #444;
+  }
+  .btn-send {
+    background: #1f4e78;
+    color: #fff;
+  }
+  .btn-send:disabled {
+    background: #a9bdd0;
+    cursor: not-allowed;
+  }
+  .status-msg {
+    margin-top: 12px;
+    font-size: 13px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    display: none;
+  }
+  .status-success { background: #e6f6e6; color: #1f7a1f; }
+  .status-error { background: #fdeaea; color: #a12b2b; }
+  .loading { text-align: center; padding: 40px 0; color: #888; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div id="loadingView" class="loading">Loading deal details...</div>
+
+<div id="mainView" style="display:none;">
+  <h2>Send SMS Reminder</h2>
+
+  <div class="template-tabs">
+    <div class="template-tab active" id="tabSole" onclick="selectTemplate('sole')">Sole Decision Maker</div>
+    <div class="template-tab" id="tabMultiple" onclick="selectTemplate('multiple')">Multiple Decision Makers</div>
+  </div>
+
+  <div class="recipient-row" id="recipientRow">Recipient: --</div>
+
+  <label for="smsBody">Message (editable)</label>
+  <textarea id="smsBody"></textarea>
+  <div class="char-count" id="charCount">0 characters</div>
+
+  <div class="btn-row">
+    <button class="btn-cancel" onclick="closeWidget()">Cancel</button>
+    <button class="btn-send" id="sendBtn" onclick="sendSms()">Send SMS</button>
+  </div>
+
+  <div class="status-msg" id="statusMsg"></div>
+</div>
+
+<script>
+let dealData = {};
+let currentTemplate = "sole";
+
+function getVal(obj, key, fallback) {
+  if (!obj) return fallback || "";
+  const v = obj[key];
+  if (v === null || v === undefined || v === "") return fallback || "";
+  return v;
+}
+
+function formatDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const opts = { day: "2-digit", month: "short", year: "numeric" };
+  return d.toLocaleDateString("en-AU", opts);
+}
+
+function formatTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const opts = { hour: "2-digit", minute: "2-digit", hour12: true };
+  return d.toLocaleTimeString("en-AU", opts);
+}
+
+function buildTemplate(type) {
+  const firstName = getVal(dealData, "Customer_First_Name") || (getVal(dealData, "Customer_Name").split(" ")[0]);
+  const partnerRaw = getVal(dealData, "Partner_Name") || getVal(dealData, "Partner_First_Name");
+  const partnerFirstName = partnerRaw ? partnerRaw.split(" ")[0] : "";
+  const apptRaw = getVal(dealData, "Appointment_Date_Time");
+  const apptDate = formatDate(apptRaw);
+  const apptTime = formatTime(apptRaw);
+  let address = getVal(dealData, "Appointment_Address");
+  address = address.replace(/\n/g, ", ");
+  const consultant = dealData.Consultant ? getVal(dealData.Consultant, "name") : "";
+
+  if (type === "sole") {
+    return `Hi ${firstName},
+We couldn't reach you by phone; this is a courtesy reminder that we have organised a solar/battery assessment for you ${apptDate} at ${apptTime} at ${address}.
+We're a Clean Energy Council Certified company providing an assessment for your property.
+Just a reminder to please show a copy of your electricity bill to our assessor (${consultant}).
+Could you please text Y or N to confirm whether or not you will be available.
+Best regards Danny from Nexa Solar
+www.nexasolar.com.au`;
+  } else {
+    return `Hi ${firstName}${partnerFirstName ? " and " + partnerFirstName : ""},
+We couldn't reach you by phone; this is a courtesy reminder that we have organised a solar/battery assessment for you both ${apptDate} at ${apptTime} at ${address}.
+We're a Clean Energy Council Certified company providing an assessment for your property.
+As there are multiple decision makers on this property, please ensure both parties are available, and have a copy of your electricity bill ready to show our assessor (${consultant}).
+Could you please text Y or N to confirm whether or not you will both be available.
+Best regards Danny from Nexa Solar
+www.nexasolar.com.au`;
+  }
+}
+
+function updateRecipientRow() {
+  const mobile1 = getVal(dealData, "Mobile_1");
+  const mobile2 = getVal(dealData, "Mobile_2");
+  const row = document.getElementById("recipientRow");
+  if (currentTemplate === "sole") {
+    row.innerText = "Recipient: " + (mobile1 || "No mobile number found");
+  } else {
+    let parts = [];
+    if (mobile1) parts.push(mobile1);
+    if (mobile2) parts.push(mobile2);
+    row.innerText = "Recipients: " + (parts.length ? parts.join(" and ") : "No mobile numbers found");
+  }
+}
+
+function selectTemplate(type) {
+  currentTemplate = type;
+  document.getElementById("tabSole").classList.toggle("active", type === "sole");
+  document.getElementById("tabMultiple").classList.toggle("active", type === "multiple");
+  document.getElementById("smsBody").value = buildTemplate(type);
+  updateCharCount();
+  updateRecipientRow();
+}
+
+function updateCharCount() {
+  const len = document.getElementById("smsBody").value.length;
+  const segments = Math.ceil(len / 160) || 1;
+  document.getElementById("charCount").innerText = len + " characters (~" + segments + " SMS segment" + (segments > 1 ? "s" : "") + ")";
+}
+
+function closeWidget() {
+  ZOHO.CRM.UI.Popup.closeReload();
+}
+
+function showStatus(msg, isError) {
+  const el = document.getElementById("statusMsg");
+  el.innerText = msg;
+  el.className = "status-msg " + (isError ? "status-error" : "status-success");
+  el.style.display = "block";
+}
+
+function sendSms() {
+  const body = document.getElementById("smsBody").value.trim();
+  if (!body) {
+    showStatus("Message cannot be empty.", true);
+    return;
+  }
+
+  const mobile1 = getVal(dealData, "Mobile_1");
+  const mobile2 = getVal(dealData, "Mobile_2");
+  let recipients = [];
+  if (currentTemplate === "sole") {
+    if (mobile1) recipients.push(mobile1);
+  } else {
+    if (mobile1) recipients.push(mobile1);
+    if (mobile2) recipients.push(mobile2);
+  }
+
+  if (recipients.length === 0) {
+    showStatus("No valid mobile number found on this record.", true);
+    return;
+  }
+
+  const sendBtn = document.getElementById("sendBtn");
+  sendBtn.disabled = true;
+  sendBtn.innerText = "Sending...";
+
+  const funcParams = {
+    recipients: recipients.join(","),
+    message: body,
+    deal_id: dealData.id
+  };
+
+  ZOHO.CRM.FUNCTIONS.execute("send_aircall_sms", { arguments: JSON.stringify(funcParams) })
+    .then(function (data) {
+      sendBtn.disabled = false;
+      sendBtn.innerText = "Send SMS";
+      if (data && data.details && data.details.output) {
+        showStatus("SMS sent successfully.", false);
+        setTimeout(closeWidget, 1200);
+      } else {
+        showStatus("Something went wrong sending the SMS. Check function logs.", true);
+      }
+    })
+    .catch(function (err) {
+      sendBtn.disabled = false;
+      sendBtn.innerText = "Send SMS";
+      showStatus("Error sending SMS: " + JSON.stringify(err), true);
+    });
+}
+
+document.getElementById("smsBody").addEventListener("input", updateCharCount);
+
+ZOHO.embeddedApp.on("PageLoad", function (data) {
+  const recordId = data.EntityId;
+  ZOHO.CRM.API.getRecord({ Entity: "Deals", RecordID: recordId })
+    .then(function (res) {
+      dealData = res.data[0];
+      document.getElementById("loadingView").style.display = "none";
+      document.getElementById("mainView").style.display = "block";
+      selectTemplate("sole");
+    })
+    .catch(function (err) {
+      document.getElementById("loadingView").innerText = "Failed to load deal data.";
+    });
+});
+
+ZOHO.embeddedApp.init();
+</script>
+
+</body>
+</html>
