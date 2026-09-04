@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Send SMS</title>
+<title>Nexa Solar - Send SMS</title>
 <script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
 <style>
   * { box-sizing: border-box; }
@@ -13,10 +13,18 @@
     background: #ffffff;
     color: #222;
   }
-  h2 {
-    font-size: 17px;
-    margin: 0 0 16px 0;
-    color: #1f2a3c;
+  .header-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .header-row img {
+    height: 32px;
+    width: auto;
+  }
+  .header-row h2 {
+    margin: 0;
   }
   .template-tabs {
     display: flex;
@@ -105,10 +113,12 @@
   }
   .status-msg {
     margin-top: 12px;
-    font-size: 13px;
-    padding: 8px 12px;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 12px 14px;
     border-radius: 6px;
     display: none;
+    word-break: break-word;
   }
   .status-success { background: #e6f6e6; color: #1f7a1f; }
   .status-error { background: #fdeaea; color: #a12b2b; }
@@ -120,7 +130,10 @@
 <div id="loadingView" class="loading">Loading deal details...</div>
 
 <div id="mainView" style="display:none;">
-  <h2>Send SMS Reminder</h2>
+  <div class="header-row">
+    <img src="https://nexasolar.com.au/wp-content/uploads/2026/06/Nexa-Solar-Logo.webp" alt="Nexa Solar" onerror="this.style.display='none'">
+    <h2>Appointment SMS Reminder</h2>
+  </div>
 
   <div class="template-tabs">
     <div class="template-tab active" id="tabSole" onclick="selectTemplate('sole')">Sole Decision Maker</div>
@@ -134,7 +147,7 @@
   <div class="char-count" id="charCount">0 characters</div>
 
   <div class="btn-row">
-    <button class="btn-cancel" onclick="closeWidget()">Cancel</button>
+    <button class="btn-cancel" id="cancelBtn" onclick="closeWidget()">Cancel</button>
     <button class="btn-send" id="sendBtn" onclick="sendSms()">Send SMS</button>
   </div>
 
@@ -152,11 +165,13 @@ function getVal(obj, key, fallback) {
   return v;
 }
 
+const APPOINTMENT_TIMEZONE = "Australia/Brisbane"; // change if appointments are in a different timezone
+
 function formatDate(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d)) return "";
-  const opts = { day: "2-digit", month: "short", year: "numeric" };
+  const opts = { day: "2-digit", month: "short", year: "numeric", timeZone: APPOINTMENT_TIMEZONE };
   return d.toLocaleDateString("en-AU", opts);
 }
 
@@ -164,7 +179,7 @@ function formatTime(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d)) return "";
-  const opts = { hour: "2-digit", minute: "2-digit", hour12: true };
+  const opts = { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: APPOINTMENT_TIMEZONE };
   return d.toLocaleTimeString("en-AU", opts);
 }
 
@@ -176,7 +191,11 @@ function buildTemplate(type) {
   const apptDate = formatDate(apptRaw);
   const apptTime = formatTime(apptRaw);
   let address = getVal(dealData, "Appointment_Address");
-  address = address.replace(/\n/g, ", ");
+  address = address
+    .split("\n")
+    .map(function (line) { return line.trim(); })
+    .filter(function (line) { return line.length > 0; })
+    .join(", ");
   const consultant = dealData.Consultant ? getVal(dealData.Consultant, "name") : "";
 
   if (type === "sole") {
@@ -198,17 +217,33 @@ www.nexasolar.com.au`;
   }
 }
 
+function isValidMobile(num) {
+  if (!num) return false;
+  const cleaned = num.replace(/\s/g, "");
+  // Basic check: must start with + and have at least 8 digits total
+  return /^\+\d{8,15}$/.test(cleaned);
+}
+
 function updateRecipientRow() {
   const mobile1 = getVal(dealData, "Mobile_1");
   const mobile2 = getVal(dealData, "Mobile_2");
   const row = document.getElementById("recipientRow");
   if (currentTemplate === "sole") {
-    row.innerText = "Recipient: " + (mobile1 || "No mobile number found");
+    if (mobile1 && isValidMobile(mobile1)) {
+      row.innerText = "Recipient: " + mobile1;
+    } else if (mobile1) {
+      row.innerHTML = "⚠ Mobile_1 looks invalid: " + mobile1;
+    } else {
+      row.innerText = "No mobile number found";
+    }
   } else {
     let parts = [];
-    if (mobile1) parts.push(mobile1);
-    if (mobile2) parts.push(mobile2);
-    row.innerText = "Recipients: " + (parts.length ? parts.join(" and ") : "No mobile numbers found");
+    let warnings = [];
+    if (mobile1) { isValidMobile(mobile1) ? parts.push(mobile1) : warnings.push(mobile1); }
+    if (mobile2) { isValidMobile(mobile2) ? parts.push(mobile2) : warnings.push(mobile2); }
+    let text = parts.length ? "Recipients: " + parts.join(" and ") : "No valid mobile numbers found";
+    if (warnings.length) text += " ⚠ Skipping invalid: " + warnings.join(", ");
+    row.innerText = text;
   }
 }
 
@@ -249,10 +284,10 @@ function sendSms() {
   const mobile2 = getVal(dealData, "Mobile_2");
   let recipients = [];
   if (currentTemplate === "sole") {
-    if (mobile1) recipients.push(mobile1);
+    if (mobile1 && isValidMobile(mobile1)) recipients.push(mobile1);
   } else {
-    if (mobile1) recipients.push(mobile1);
-    if (mobile2) recipients.push(mobile2);
+    if (mobile1 && isValidMobile(mobile1)) recipients.push(mobile1);
+    if (mobile2 && isValidMobile(mobile2)) recipients.push(mobile2);
   }
 
   if (recipients.length === 0) {
@@ -274,17 +309,27 @@ function sendSms() {
     .then(function (data) {
       sendBtn.disabled = false;
       sendBtn.innerText = "Send SMS";
-      if (data && data.details && data.details.output) {
-        showStatus("SMS sent successfully.", false);
-        setTimeout(closeWidget, 1200);
+
+      let output = null;
+      if (data && data.details && data.details.output !== undefined) {
+        output = data.details.output;
+      }
+
+      // Deluge string-return functions may send back "true"/"false" as text
+      const isSuccess = output === true || output === "true";
+
+      if (isSuccess) {
+        showStatus("✓ SMS sent successfully.", false);
+        document.getElementById("sendBtn").style.display = "none";
+        document.getElementById("cancelBtn").innerText = "Close";
       } else {
-        showStatus("Something went wrong sending the SMS. Check function logs.", true);
+        showStatus("✗ Something went wrong sending the SMS. Raw response: " + JSON.stringify(data), true);
       }
     })
     .catch(function (err) {
       sendBtn.disabled = false;
       sendBtn.innerText = "Send SMS";
-      showStatus("Error sending SMS: " + JSON.stringify(err), true);
+      showStatus("✗ Error sending SMS: " + JSON.stringify(err), true);
     });
 }
 
