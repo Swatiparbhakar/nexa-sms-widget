@@ -140,6 +140,19 @@
     <div class="template-tab" id="tabMultiple" onclick="selectTemplate('multiple')">Multiple Decision Makers</div>
   </div>
 
+  <label for="senderSelect">Send From</label>
+  <select id="senderSelect">
+    <option value="Mark 1">Mark 1</option>
+    <option value="Mark 2">Mark 2</option>
+    <option value="Mark 3">Mark 3</option>
+    <option value="Dan 1">Dan 1</option>
+    <option value="Dan 2">Dan 2</option>
+    <option value="Dan 3">Dan 3</option>
+    <option value="Donita 1">Donita 1</option>
+    <option value="Donita 2">Donita 2</option>
+    <option value="Donita 3">Donita 3</option>
+  </select>
+
   <div class="recipient-row" id="recipientRow">Recipient: --</div>
 
   <label for="smsBody">Message (editable)</label>
@@ -299,10 +312,13 @@ function sendSms() {
   sendBtn.disabled = true;
   sendBtn.innerText = "Sending...";
 
+  const senderName = document.getElementById("senderSelect").value;
+
   const funcParams = {
     recipients: recipients.join(","),
     message: body,
-    deal_id: dealData.id
+    deal_id: dealData.id,
+    sender_name: senderName
   };
 
   ZOHO.CRM.FUNCTIONS.execute("send_aircall_sms", { arguments: JSON.stringify(funcParams) })
@@ -315,13 +331,18 @@ function sendSms() {
         output = data.details.output;
       }
 
-      // Deluge string-return functions may send back "true"/"false" as text
       const isSuccess = output === true || output === "true";
+      const isNotConfigured = output === "NOT_CONFIGURED";
+      const isNumberNotFound = output === "NUMBER_NOT_FOUND";
 
       if (isSuccess) {
         showStatus("✓ SMS sent successfully.", false);
         document.getElementById("sendBtn").style.display = "none";
         document.getElementById("cancelBtn").innerText = "Close";
+      } else if (isNotConfigured) {
+        showStatus("Number is not configured. Please try from other number.", true);
+      } else if (isNumberNotFound) {
+        showStatus("Selected sender number could not be found. Please try from other number.", true);
       } else {
         showStatus("✗ Something went wrong sending the SMS. Raw response: " + JSON.stringify(data), true);
       }
